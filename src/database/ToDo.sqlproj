@@ -10,6 +10,12 @@
   <ItemGroup>
     <PostDeploy Include="postDeployment.sql" />
   </ItemGroup>
+  <ItemGroup>
+    <Build Include="Tables\Users.sql" />
+    <Build Include="Tables\Tasks.sql" />
+    <Build Include="Tables\TaskShares.sql" />
+    <Build Include="Triggers\TR_Task_UpdateModifiedAt.sql" />
+  </ItemGroup>
   <Target Name="BeforeBuild">
     <Delete Files="$(BaseIntermediateOutputPath)\project.assets.json" />
   </Target>
