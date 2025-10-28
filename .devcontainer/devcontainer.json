@@ -1,0 +1,65 @@
+// For format details, see https://aka.ms/devcontainer.json. 
+// For config options, see the README at: https://github.com/microsoft/azuresql-devcontainers/tree/main/src/dotnet
+{
+	"name": ".NET and Azure SQL",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "spec-kit-app",
+	"workspaceFolder": "/workspace",
+	"customizations": {
+		// Configure properties specific to VS Code.
+		"vscode": {
+			// Set *default* container specific settings.json values on container create.
+			"settings": { 
+				"mssql.connections": [
+					{
+						"server": "localhost,1433",
+						"database": "master",
+						"authenticationType": "SqlLogin",
+						"user": "sa",
+						"password": "${env:MSSQL_SA_PASSWORD}",
+						"savePassword": true,
+						"profileName": "LocalDev",
+						"trustServerCertificate": true
+					}
+				],
+				"sqlDatabaseProjects.dotnetSDK Location": "/usr/share/dotnet"
+			},
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"ms-dotnettools.csdevkit",
+				"ms-dotnettools.csharp",
+				"ms-azuretools.vscode-bicep",
+				"ms-mssql.mssql",
+				"ms-azuretools.vscode-docker",
+				"github.copilot",
+				"github.codespaces",
+				"PKief.material-icon-theme",
+				"humao.rest-client"
+			]
+		}
+	},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	"forwardPorts": [5000, 5001, 8000, 1433],
+
+    // Post create commands to run after the container is created.
+	"postCreateCommand": "bash .devcontainer/sql/postCreateCommand.sh './src/database/bin/Debug' && uv tool install specify-cli --from git+https://github.com/github/spec-kit.git",
+
+	// Post start commands to run after the container is started.
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	"features": {
+		"ghcr.io/devcontainers/features/azure-cli:1": {},
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		"ghcr.io/azure/azure-dev/azd:latest": {
+			"version": "latest"
+		},
+		"ghcr.io/devcontainers/features/dotnet:2": {},
+		"ghcr.io/devcontainers/features/node:1": {},
+		"ghcr.io/jsburckhardt/devcontainer-features/uv:1": {},
+		"ghcr.io/azure/azure-dev/azd:0": {},
+		"ghcr.io/devcontainers-extra/features/angular-cli:2": {}
+	}
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}

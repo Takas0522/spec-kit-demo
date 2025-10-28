@@ -1,0 +1,821 @@
+openapi: 3.0.3
+info:
+  title: Shared ToDo Management API
+  version: 1.0.0
+  description: |
+    REST API for managing tasks with sharing capabilities.
+    
+    **Authentication**: All endpoints require Azure Entra ID JWT token in Authorization header.
+    
+    **Authorization**: Users can only access their own tasks or tasks shared with them.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: https://localhost:5001/api
+    description: Development server
+  - url: https://api.todo-app.example.com/api
+    description: Production server
+
+security:
+  - AzureEntraId: []
+
+tags:
+  - name: Users
+    description: User profile operations
+  - name: Tasks
+    description: Task CRUD operations
+  - name: Task Shares
+    description: Task sharing operations
+  - name: Shared Tasks
+    description: View tasks shared with current user
+
+paths:
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      description: Returns the authenticated user's profile information
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - AzureEntraId: []
+
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List user's tasks
+      description: |
+        Returns a paginated list of tasks owned by the authenticated user.
+        Supports filtering, sorting, and pagination.
+      operationId: getTasks
+      parameters:
+        - name: status
+          in: query
+          description: Filter by task status
+          required: false
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          required: false
+          schema:
+            type: string
+            enum: [createdAt, modifiedAt, dueDate, title, status]
+            default: createdAt
+        - name: sortOrder
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedTaskListDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - AzureEntraId: []
+
+    post:
+      tags:
+        - Tasks
+      summary: Create a new task
+      description: Creates a new task owned by the authenticated user
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskDto'
+      responses:
+        '201':
+          description: Task created successfully
+          headers:
+            Location:
+              description: URI of the created task
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - AzureEntraId: []
+
+  /tasks/{id}:
+    get:
+      tags:
+        - Tasks
+      summary: Get task by ID
+      description: |
+        Returns a single task by ID. User must be the owner or have the task shared with them.
+      operationId: getTaskById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+    put:
+      tags:
+        - Tasks
+      summary: Update a task
+      description: |
+        Updates an existing task. Only the task owner can update a task.
+        Shared users have read-only access.
+      operationId: updateTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskDto'
+      responses:
+        '200':
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+    delete:
+      tags:
+        - Tasks
+      summary: Delete a task
+      description: |
+        Soft deletes a task (sets IsDeleted flag). Only the task owner can delete a task.
+        Task shares are automatically revoked.
+      operationId: deleteTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Task deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+  /tasks/{id}/status:
+    patch:
+      tags:
+        - Tasks
+      summary: Update task status
+      description: |
+        Updates only the status of a task. Only the task owner can change status.
+        This is a convenience endpoint for status-only updates.
+      operationId: updateTaskStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskStatusDto'
+      responses:
+        '200':
+          description: Task status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+  /tasks/{id}/shares:
+    get:
+      tags:
+        - Task Shares
+      summary: List task shares
+      description: |
+        Returns a list of users with whom the task is shared.
+        Only the task owner can view shares.
+      operationId: getTaskShares
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task shares retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskShareDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+    post:
+      tags:
+        - Task Shares
+      summary: Share a task
+      description: |
+        Shares a task with another user by email. Only the task owner can share tasks.
+        The recipient will have read-only access to the task.
+      operationId: shareTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareTaskDto'
+      responses:
+        '201':
+          description: Task shared successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskShareDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Task is already shared with this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - AzureEntraId: []
+
+  /tasks/{id}/shares/{userId}:
+    delete:
+      tags:
+        - Task Shares
+      summary: Revoke task share
+      description: |
+        Revokes sharing access for a specific user. Only the task owner can revoke shares.
+      operationId: revokeTaskShare
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          description: User ID to revoke access from
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Task share revoked successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - AzureEntraId: []
+
+  /shared-tasks:
+    get:
+      tags:
+        - Shared Tasks
+      summary: List tasks shared with current user
+      description: |
+        Returns a paginated list of tasks that have been shared with the authenticated user.
+        These tasks are read-only.
+      operationId: getSharedTasks
+      parameters:
+        - name: status
+          in: query
+          description: Filter by task status
+          required: false
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Shared tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSharedTaskListDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - AzureEntraId: []
+
+components:
+  securitySchemes:
+    AzureEntraId:
+      type: oauth2
+      description: Azure Entra ID OAuth2 authentication
+      flows:
+        implicit:
+          authorizationUrl: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize
+          scopes:
+            api://todo-app/Tasks.ReadWrite: Read and write user's tasks
+
+  schemas:
+    TaskStatus:
+      type: string
+      enum:
+        - NotStarted
+        - InProgress
+        - Completed
+      description: |
+        Task status enumeration:
+        - `NotStarted`: Task has not been started (未実施)
+        - `InProgress`: Task is currently being worked on (実施中)
+        - `Completed`: Task is completed (完了)
+
+    UserDto:
+      type: object
+      required:
+        - id
+        - email
+        - displayName
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        displayName:
+          type: string
+          description: User display name
+          example: "John Doe"
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2025-10-28T10:30:00Z"
+
+    TaskDto:
+      type: object
+      required:
+        - id
+        - ownerId
+        - title
+        - status
+        - createdAt
+        - modifiedAt
+        - isOwner
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique task identifier
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        ownerId:
+          type: string
+          format: uuid
+          description: ID of the task owner
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        ownerName:
+          type: string
+          description: Display name of the task owner
+          example: "John Doe"
+        title:
+          type: string
+          maxLength: 200
+          description: Task title
+          example: "Complete project proposal"
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: Task description (optional)
+          example: "Write and submit the Q4 project proposal to the board"
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Task due date (optional)
+          example: "2025-11-15T23:59:59Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: Task creation timestamp
+          example: "2025-10-28T10:30:00Z"
+        modifiedAt:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+          example: "2025-10-28T14:45:00Z"
+        isOwner:
+          type: boolean
+          description: Indicates if the current user is the task owner
+          example: true
+
+    CreateTaskDto:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Task title
+          example: "Complete project proposal"
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: Task description (optional)
+          example: "Write and submit the Q4 project proposal"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Task due date (optional)
+          example: "2025-11-15T23:59:59Z"
+
+    UpdateTaskDto:
+      type: object
+      required:
+        - title
+        - status
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Task title
+          example: "Complete project proposal (Updated)"
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: Task description (optional)
+          example: "Updated description"
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+          description: Task due date (optional)
+          example: "2025-11-15T23:59:59Z"
+
+    UpdateTaskStatusDto:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+
+    TaskShareDto:
+      type: object
+      required:
+        - id
+        - taskId
+        - sharedWithUserId
+        - sharedWithUserEmail
+        - sharedWithUserName
+        - sharedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique share identifier
+          example: "c3d4e5f6-a7b8-9012-cdef-123456789012"
+        taskId:
+          type: string
+          format: uuid
+          description: ID of the shared task
+          example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        sharedWithUserId:
+          type: string
+          format: uuid
+          description: ID of the user with whom the task is shared
+          example: "d4e5f6a7-b8c9-0123-def1-234567890123"
+        sharedWithUserEmail:
+          type: string
+          format: email
+          description: Email of the user with whom the task is shared
+          example: "jane@example.com"
+        sharedWithUserName:
+          type: string
+          description: Display name of the user with whom the task is shared
+          example: "Jane Smith"
+        sharedAt:
+          type: string
+          format: date-time
+          description: When the task was shared
+          example: "2025-10-28T11:00:00Z"
+
+    ShareTaskDto:
+      type: object
+      required:
+        - sharedWithUserEmail
+      properties:
+        sharedWithUserEmail:
+          type: string
+          format: email
+          description: Email of the user to share the task with
+          example: "jane@example.com"
+
+    SharedTaskDto:
+      allOf:
+        - $ref: '#/components/schemas/TaskDto'
+        - type: object
+          required:
+            - sharedAt
+          properties:
+            sharedAt:
+              type: string
+              format: date-time
+              description: When the task was shared with the current user
+              example: "2025-10-28T11:00:00Z"
+
+    PagedTaskListDto:
+      type: object
+      required:
+        - items
+        - totalCount
+        - page
+        - pageSize
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskDto'
+        totalCount:
+          type: integer
+          description: Total number of tasks matching the filter
+          example: 42
+        page:
+          type: integer
+          description: Current page number (1-indexed)
+          example: 1
+        pageSize:
+          type: integer
+          description: Number of items per page
+          example: 20
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 3
+
+    PagedSharedTaskListDto:
+      type: object
+      required:
+        - items
+        - totalCount
+        - page
+        - pageSize
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharedTaskDto'
+        totalCount:
+          type: integer
+          description: Total number of shared tasks
+          example: 15
+        page:
+          type: integer
+          description: Current page number (1-indexed)
+          example: 1
+        pageSize:
+          type: integer
+          description: Number of items per page
+          example: 20
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 1
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Error code for programmatic handling
+              example: "TASK_NOT_FOUND"
+            message:
+              type: string
+              description: Human-readable error message
+              example: "Task with ID b2c3d4e5-f6a7-8901-bcde-f12345678901 not found"
+            details:
+              type: array
+              items:
+                type: string
+              description: Additional error details (e.g., validation errors)
+              example: ["Title is required", "Title cannot exceed 200 characters"]
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Request validation failed"
+              details:
+                - "Title is required"
+                - "Status must be one of: NotStarted, InProgress, Completed"
+
+    Unauthorized:
+      description: Authentication required or token invalid/expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "UNAUTHORIZED"
+              message: "Authentication required. Please provide a valid access token."
+              details: []
+
+    Forbidden:
+      description: User does not have permission to access this resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "FORBIDDEN"
+              message: "You do not have permission to modify this task"
+              details: []
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "TASK_NOT_FOUND"
+              message: "Task with ID b2c3d4e5-f6a7-8901-bcde-f12345678901 not found"
+              details: []
