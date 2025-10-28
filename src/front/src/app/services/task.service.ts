@@ -8,7 +8,7 @@ import { Task, CreateTaskDto, UpdateTaskDto, TaskShare, CreateTaskShareDto, User
 })
 export class TaskService {
   private http = inject(HttpClient);
-  private apiUrl = 'http://localhost:5182/api';
+  private apiUrl = 'http://localhost:5182/api'; // TODO: Move to environment configuration
 
   private getParams(userId?: string): { params?: HttpParams } {
     if (userId) {

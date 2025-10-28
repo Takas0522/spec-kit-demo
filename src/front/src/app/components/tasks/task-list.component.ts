@@ -116,7 +116,7 @@ export class TaskListComponent implements OnInit {
   }
 
   deleteTask(taskId: string) {
-    if (!confirm('Are you sure you want to delete this task?')) {
+    if (!confirm('このタスクを削除してもよろしいですか？')) {
       return;
     }
 
